@@ -1,0 +1,393 @@
+/* ============ 儿童启蒙小游戏 - 共享样式 ============ */
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  height: 100%;
+  font-family: "Microsoft YaHei UI", "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  background: #FFF8E7;
+  color: #37474F;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+}
+.app {
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+/* 顶部:难度+得分 */
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mode-select {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid #E8E0CC;
+  border-radius: 8px;
+  background: #FFFFFF;
+  color: #37474F;
+  cursor: pointer;
+  outline: none;
+}
+.score-label {
+  font-size: 15px;
+  font-weight: bold;
+  color: #37474F;
+}
+
+/* 进度信息 */
+.info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+.progress-info { color: #78909C; }
+.time-info {
+  color: #5C6BC0;
+  font-weight: bold;
+  transition: color 0.1s;
+}
+.time-info.warn { color: #F44336; }
+.time-info.blink { color: #FFF8E7 !important; }
+
+/* 进度条 */
+.progress-bar {
+  height: 12px;
+  background: #E8E0CC;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.bar {
+  height: 100%;
+  background: #5C6BC0;
+  border-radius: 6px;
+  width: 100%;
+  transition: width 0.15s linear, background 0.2s;
+}
+.bar.warn { background: #F44336; }
+
+/* 题目 */
+.question {
+  font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: clamp(36px, 12vw, 56px);
+  font-weight: bold;
+  text-align: center;
+  margin: 4px 0 28px;
+  color: #37474F;
+  min-height: 1.2em;
+  line-height: 1.2;
+}
+
+/* 输入框 */
+.answer-input {
+  display: block;
+  margin: 0 auto 22px;
+  width: 70%;
+  max-width: 220px;
+  padding: 10px 12px;
+  font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: clamp(24px, 7vw, 30px);
+  text-align: center;
+  border: 2px solid #E8E0CC;
+  border-radius: 10px;
+  background: #FFFFFF;
+  color: #37474F;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.answer-input:focus { border-color: #FF8C42; }
+.answer-input.green { border-color: #4CAF50; }
+.answer-input.red { border-color: #F44336; }
+
+/* 按钮 */
+.btn {
+  display: inline-block;
+  padding: 12px 32px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: bold;
+  color: #FFFFFF;
+  background: #FF8C42;
+  border: none;
+  border-radius: 25px;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.08s;
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 140px;
+}
+.btn:hover { background: #FF7A2E; }
+.btn:active { background: #E6691C; transform: scale(0.96); }
+.btn.green { background: #4CAF50; }
+.btn.green:hover { background: #43A047; }
+.btn.green:active { background: #388E3C; }
+.btn.blue { background: #5C6BC0; }
+.btn.blue:hover { background: #3F51B5; }
+.btn.blue:active { background: #303F9F; }
+.btn.gray { background: #78909C; }
+.btn.gray:hover { background: #607D8B; }
+.btn.gray:active { background: #546E7A; }
+.btn[disabled] { opacity: 0.55; cursor: default; transform: none; }
+.submit-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.bottom-row {
+  display: none;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.bottom-row.show { display: flex; }
+
+/* 反馈 */
+.feedback {
+  text-align: center;
+  font-size: 15px;
+  font-weight: bold;
+  min-height: 1.5em;
+  color: #37474F;
+}
+.feedback.green { color: #4CAF50; }
+.feedback.red { color: #F44336; }
+
+/* 弹窗 */
+.modal-mask {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-mask.show { display: flex; }
+.modal {
+  background: #FFF8E7;
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal-title {
+  font-size: 17px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 12px;
+  color: #37474F;
+}
+.modal-list { margin-bottom: 14px; }
+.modal-item {
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.modal-item:nth-child(odd) { background: #FFFFFF; }
+.modal-item:nth-child(even) { background: #F5EFD8; }
+.modal-item-q {
+  font-size: 14px;
+  font-weight: bold;
+  color: #37474F;
+}
+.modal-item-a {
+  font-size: 13px;
+  color: #F44336;
+  margin-top: 2px;
+}
+
+/* 特效 canvas */
+#fxCanvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 900;
+  display: none;
+}
+#fxCanvas.show { display: block; }
+
+/* 动画 */
+.shake { animation: shake 0.6s ease; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10% { transform: translateX(-18px); }
+  25% { transform: translateX(16px); }
+  40% { transform: translateX(-12px); }
+  55% { transform: translateX(10px); }
+  70% { transform: translateX(-6px); }
+  85% { transform: translateX(4px); }
+}
+.shake-small { animation: shakeSmall 0.55s ease; }
+@keyframes shakeSmall {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-5px); }
+  60% { transform: translateX(4px); }
+  80% { transform: translateX(-3px); }
+}
+
+/* 哭脸气泡 */
+.bubble {
+  position: absolute;
+  background: #FFFFFF;
+  border: 2px solid #F44336;
+  border-radius: 50%;
+  padding: 8px 14px;
+  color: #F44336;
+  font-weight: bold;
+  font-size: 16px;
+  pointer-events: none;
+  z-index: 950;
+  transform: translate(-50%, -100%);
+}
+.bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #F44336;
+}
+
+/* 大对勾 */
+.big-check {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 100px;
+  color: #4CAF50;
+  font-weight: bold;
+  z-index: 950;
+  pointer-events: none;
+  animation: bounce 0.7s ease;
+}
+@keyframes bounce {
+  0% { transform: translate(-50%, -50%) scale(0.3); }
+  25% { transform: translate(-50%, -50%) scale(1.3); }
+  50% { transform: translate(-50%, -50%) scale(0.85); }
+  75% { transform: translate(-50%, -50%) scale(1.1); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 题目状态文字 */
+.end-text { font-size: clamp(28px, 9vw, 40px); }
+
+/* 首页游戏大厅卡片 */
+.lobby {
+  width: 100%;
+  max-width: 520px;
+  padding: 20px 0;
+}
+.lobby-title {
+  text-align: center;
+  font-size: clamp(24px, 7vw, 32px);
+  font-weight: bold;
+  color: #37474F;
+  margin-bottom: 8px;
+}
+.lobby-sub {
+  text-align: center;
+  color: #78909C;
+  font-size: 14px;
+  margin-bottom: 28px;
+}
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 0 4px;
+}
+.game-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+  background: #FFFFFF;
+  border-radius: 16px;
+  text-decoration: none;
+  color: #37474F;
+  box-shadow: 0 2px 12px rgba(180, 160, 120, 0.15);
+  transition: transform 0.12s, box-shadow 0.12s;
+  cursor: pointer;
+  border: 2px solid transparent;
+  min-height: 160px;
+}
+.game-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 20px rgba(180, 160, 120, 0.25);
+  border-color: #FF8C42;
+}
+.game-card:active { transform: translateY(-1px); }
+.game-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  background: #F5EFD8;
+}
+.game-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+.game-name {
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.game-desc {
+  font-size: 12px;
+  color: #78909C;
+  text-align: center;
+}
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 14px;
+  color: #78909C;
+  text-decoration: none;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  transition: background 0.1s;
+}
+.back-btn:hover { background: #F5EFD8; color: #37474F; }
+
+/* 大屏适配 */
+@media (min-width: 600px) {
+  .app { padding: 16px 0; }
+  .question { font-size: 56px; }
+  .answer-input { font-size: 30px; padding: 12px 14px; }
+  .btn { padding: 14px 40px; font-size: 17px; }
+  .game-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (min-width: 800px) {
+  .game-grid { grid-template-columns: repeat(4, 1fr); }
+}
