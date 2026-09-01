@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FFF8E7">
+<title>20以内加减法</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  /* 数学游戏特有样式 */
+  .num-input {
+    font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  }
+  .q-display {
+    font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <a href="../index.html" class="back-btn">← 返回大厅</a>
+    </div>
+    <div class="top">
+      <select id="modeSelect" class="mode-select">
+        <option value="10以内加减法">10以内加减法</option>
+        <option value="20以内加减法" selected>20以内加减法</option>
+        <option value="20以内进位加法">20以内进位加法</option>
+        <option value="20以内退位减法">20以内退位减法</option>
+      </select>
+      <div class="score-label">得分: <span id="score">0</span></div>
+    </div>
+
+    <div class="info">
+      <div class="progress-info">题目 <span id="qIdx">1</span> / <span id="qTotal">10</span></div>
+      <div class="time-info" id="timeInfo">剩余: 15s</div>
+    </div>
+
+    <div class="progress-bar">
+      <div class="bar" id="bar"></div>
+    </div>
+
+    <div class="question q-display" id="question">17 + 3 = ?</div>
+
+    <input id="answer" class="answer-input num-input" type="text" inputmode="numeric"
+           autocomplete="off" pattern="[0-9]*" maxlength="3">
+
+    <div class="submit-row">
+      <button id="submitBtn" class="btn">提 交</button>
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <div class="bottom-row" id="bottomRow">
+      <button id="restartBtn" class="btn green">再来一局</button>
+      <button id="reviewBtn" class="btn blue">查看错题</button>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <div class="modal-title" id="modalTitle">错题回顾</div>
+      <div class="modal-list" id="modalList"></div>
+      <div style="text-align:center;">
+        <button id="modalCloseBtn" class="btn gray">关 闭</button>
+      </div>
+    </div>
+  </div>
+
+<script src="../assets/game.js"></script>
+<script>
+"use strict";
+
+const Lib = window.GameLib;
+const $ = Lib.$;
+const randInt = Lib.randInt;
+const AudioSystem = Lib.AudioSystem;
+const FxSystem = Lib.FxSystem;
+const TimerSystem = Lib.TimerSystem;
+const ModalSystem = Lib.ModalSystem;
+window.GameLib.bindGlobalEvents();
+
+// ---- 数学游戏配置 ----
+const CONFIG = {
+  totalQuestions: 10,
+  secondsPerQuestion: 15,
+  scoreCorrect: 10,
+  scoreBonusMax: 5,
+};
+
+const MODES = {
+  "10以内加减法":   { max: 10, type: "any" },
+  "20以内加减法":   { max: 20, type: "any" },
+  "20以内进位加法": { max: 20, type: "carry_add" },
+  "20以内退位减法": { max: 20, type: "borrow_sub" },
+};
+
+// ---- 状态 ----
+const state = {
+  mode: "20以内加减法",
+  qIndex: 0,
+  score: 0,
+  currentAnswer: 0,
+  currentQText: "",
+  gameOver: false,
+  wrongList: [],
+  awaitingNext: false,
+};
+
+// ---- DOM ----
+const modeSelect = $("modeSelect");
+const scoreEl = $("score");
+const qIdxEl = $("qIdx");
+const qTotalEl = $("qTotal");
+const timeInfo = $("timeInfo");
+const bar = $("bar");
+const questionEl = $("question");
+const answerEl = $("answer");
+const submitBtn = $("submitBtn");
+const feedbackEl = $("feedback");
+const bottomRow = $("bottomRow");
+const restartBtn = $("restartBtn");
+const reviewBtn = $("reviewBtn");
+const modalMask = $("modalMask");
+const modalTitle = $("modalTitle");
+const modalList = $("modalList");
+const modalCloseBtn = $("modalCloseBtn");
+
+qTotalEl.textContent = CONFIG.totalQuestions;
+
+// ---- 初始化特效与弹窗 ----
+FxSystem.init(questionEl, answerEl);
+ModalSystem.init(modalMask, modalTitle, modalList, modalCloseBtn);
+
+// ---- 题目生成 ----
+function genQuestion() {
+  const cfg = MODES[state.mode];
+  const maxN = cfg.max;
+  const t = cfg.type;
+  let a, b, ans, op;
+  if (t === "any") {
+    op = Math.random() < 0.5 ? "+" : "-";
+    if (op === "+") {
+      a = randInt(0, maxN);
+      b = randInt(0, maxN - a);
+      ans = a + b;
+    } else {
+      a = randInt(0, maxN);
+      b = randInt(0, a);
+      ans = a - b;
+    }
+  } else if (t === "carry_add") {
+    a = randInt(1, 9);
+    b = randInt(10 - a, 9);
+    ans = a + b;
+    op = "+";
+  } else {
+    const x = randInt(1, 8);
+    a = 10 + x;
+    b = randInt(x + 1, 9);
+    ans = a - b;
+    op = "-";
+  }
+  return { text: `${a} ${op} ${b} = ?`, answer: ans };
+}
+
+// ---- 游戏流程 ----
+function newRound() {
+  state.qIndex = 0;
+  state.score = 0;
+  state.wrongList = [];
+  state.gameOver = false;
+  state.awaitingNext = false;
+  FxSystem.setGameOver(false);
+  FxSystem.resetIdx();
+  bottomRow.classList.remove("show");
+  submitBtn.style.display = "";
+  submitBtn.disabled = false;
+  answerEl.disabled = false;
+  updateScore();
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (state.qIndex >= CONFIG.totalQuestions) {
+    finish();
+    return;
+  }
+  state.qIndex++;
+  qIdxEl.textContent = state.qIndex;
+  feedbackEl.textContent = "";
+  feedbackEl.className = "feedback";
+
+  const q = genQuestion();
+  state.currentQText = q.text;
+  state.currentAnswer = q.answer;
+  questionEl.textContent = q.text;
+  questionEl.classList.remove("end-text");
+
+  answerEl.value = "";
+  answerEl.disabled = false;
+  answerEl.className = "answer-input num-input";
+  setTimeout(() => { if (!state.gameOver) answerEl.focus(); }, 50);
+
+  timeInfo.classList.remove("warn", "blink");
+  bar.style.width = "100%";
+  bar.classList.remove("warn");
+
+  TimerSystem.start(
+    CONFIG.secondsPerQuestion,
+    (left) => {
+      const ratio = left / CONFIG.secondsPerQuestion;
+      bar.style.width = (ratio * 100) + "%";
+      timeInfo.textContent = `剩余: ${Math.ceil(left)}s`;
+      if (left <= 5) {
+        bar.classList.add("warn");
+        timeInfo.classList.add("warn");
+        timeInfo.classList.toggle("blink");
+      } else {
+        bar.classList.remove("warn");
+        timeInfo.classList.remove("warn", "blink");
+      }
+    },
+    () => timeout()
+  );
+}
+
+function updateScore() { scoreEl.textContent = state.score; }
+
+function submit() {
+  if (state.gameOver || state.awaitingNext) return;
+  const raw = answerEl.value.trim();
+  if (raw === "") {
+    feedbackEl.textContent = "请输入答案";
+    feedbackEl.className = "feedback red";
+    answerEl.focus();
+    return;
+  }
+  if (!/^-?\d+$/.test(raw)) {
+    feedbackEl.textContent = "请输入整数";
+    feedbackEl.className = "feedback red";
+    return;
+  }
+  const userAns = parseInt(raw, 10);
+
+  TimerSystem.pause();
+  state.awaitingNext = true;
+
+  if (userAns === state.currentAnswer) {
+    let bonus = 0;
+    if (TimerSystem.remaining > 0) {
+      bonus = Math.round(CONFIG.scoreBonusMax * (TimerSystem.remaining / CONFIG.secondsPerQuestion));
+      bonus = Math.max(0, Math.min(CONFIG.scoreBonusMax, bonus));
+    }
+    const got = CONFIG.scoreCorrect + bonus;
+    state.score += got;
+    feedbackEl.textContent = `✅  正确!  +${got} 分`;
+    feedbackEl.className = "feedback green";
+    AudioSystem.correct();
+    FxSystem.triggerCorrect();
+  } else {
+    feedbackEl.textContent = `❌  错误!  正确答案:${state.currentAnswer}`;
+    feedbackEl.className = "feedback red";
+    state.wrongList.push({
+      q: state.currentQText,
+      user: userAns,
+      correct: state.currentAnswer,
+    });
+    AudioSystem.wrong();
+    FxSystem.triggerWrong();
+  }
+
+  updateScore();
+  answerEl.disabled = true;
+  const resumeDelay = userAns === state.currentAnswer ? 1500 : 1800;
+  setTimeout(() => {
+    state.awaitingNext = false;
+    nextQuestion();
+  }, resumeDelay);
+}
+
+function timeout() {
+  if (state.gameOver || state.awaitingNext) return;
+  state.awaitingNext = true;
+  feedbackEl.textContent = `⏰  超时!  正确答案:${state.currentAnswer}`;
+  feedbackEl.className = "feedback red";
+  state.wrongList.push({
+    q: state.currentQText,
+    user: null,
+    correct: state.currentAnswer,
+  });
+  AudioSystem.wrong();
+  FxSystem.triggerWrong();
+  answerEl.disabled = true;
+  setTimeout(() => {
+    state.awaitingNext = false;
+    nextQuestion();
+  }, 1800);
+}
+
+function finish() {
+  state.gameOver = true;
+  FxSystem.setGameOver(true);
+  TimerSystem.stop();
+  FxSystem.clearAll();
+  const full = CONFIG.totalQuestions * CONFIG.scoreCorrect;
+  const percent = full ? Math.floor(state.score / full * 100) : 0;
+  let comment;
+  if (percent >= 90) comment = "太棒了!";
+  else if (percent >= 60) comment = "不错,继续努力!";
+  else comment = "加油,多练习会更好!";
+  questionEl.textContent = "练习结束";
+  questionEl.classList.add("end-text");
+  feedbackEl.textContent = `总分 ${state.score} / ${full}    ${comment}`;
+  feedbackEl.className = "feedback";
+  timeInfo.textContent = "剩余: 0s";
+  timeInfo.className = "time-info";
+  bar.style.width = "0%";
+  answerEl.disabled = true;
+  submitBtn.style.display = "none";
+  bottomRow.classList.add("show");
+  reviewBtn.style.display = state.wrongList.length > 0 ? "" : "none";
+}
+
+// ---- 事件绑定 ----
+submitBtn.addEventListener("click", () => { AudioSystem.ensure(); submit(); });
+answerEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    AudioSystem.ensure();
+    submit();
+  }
+});
+answerEl.addEventListener("input", (e) => {
+  const v = e.target.value;
+  const cleaned = v.replace(/[^\d]/g, "");
+  if (v !== cleaned) e.target.value = cleaned;
+});
+modeSelect.addEventListener("change", () => {
+  state.mode = modeSelect.value;
+  newRound();
+});
+restartBtn.addEventListener("click", () => { AudioSystem.ensure(); newRound(); });
+reviewBtn.addEventListener("click", () => ModalSystem.showWrong(state.wrongList));
+
+// ---- 启动 ----
+newRound();
+</script>
+</body>
+</html>
