@@ -4,45 +4,472 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#FFF8E7">
-<title>儿童启蒙小游戏厅</title>
-<link rel="stylesheet" href="assets/style.css">
+<title>汉语拼音练习</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  /* 拼音游戏特有样式 */
+  .pinyin-display {
+    font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    font-size: clamp(40px, 14vw, 64px);
+    font-weight: bold;
+    text-align: center;
+    margin: 4px 0 24px;
+    color: #37474F;
+    min-height: 1.2em;
+    letter-spacing: 4px;
+  }
+  .options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+    max-width: 360px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .option-btn {
+    padding: 16px 12px;
+    font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    font-size: clamp(20px, 6vw, 26px);
+    font-weight: bold;
+    background: #FFFFFF;
+    color: #37474F;
+    border: 2px solid #E8E0CC;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: center;
+    min-height: 56px;
+  }
+  .option-btn:hover {
+    border-color: #FF8C42;
+    background: #FFF8E7;
+  }
+  .option-btn:active {
+    transform: scale(0.97);
+  }
+  .option-btn.correct {
+    border-color: #4CAF50;
+    background: #E8F5E9;
+    color: #4CAF50;
+  }
+  .option-btn.wrong {
+    border-color: #F44336;
+    background: #FFEBEE;
+    color: #F44336;
+  }
+  .option-btn[disabled] {
+    cursor: default;
+    opacity: 0.7;
+  }
+  .pinyin-game .question { display: none; } /* 数学题样式不用 */
+  .pinyin-game .answer-input { display: none; } /* 不用输入框 */
+  .hint {
+    text-align: center;
+    font-size: 13px;
+    color: #78909C;
+    margin-bottom: 8px;
+  }
+  @media (min-width: 600px) {
+    .options { grid-template-columns: repeat(4, 1fr); }
+  }
+</style>
 </head>
 <body>
-  <div class="lobby">
-    <h1 class="lobby-title">🎮 儿童启蒙小游戏厅</h1>
-    <p class="lobby-sub">快乐学习 · 每天进步一点点</p>
+  <div class="app pinyin-game">
+    <div class="top">
+      <a href="../index.html" class="back-btn">← 返回大厅</a>
+    </div>
+    <div class="top">
+      <select id="modeSelect" class="mode-select">
+        <option value="声母">声母认读</option>
+        <option value="韵母" selected>韵母认读</option>
+        <option value="整体认读">整体认读音节</option>
+        <option value="完整拼音">完整拼音 → 汉字</option>
+      </select>
+      <div class="score-label">得分: <span id="score">0</span></div>
+    </div>
 
-    <div class="game-grid">
-      <a href="math-game/index.html" class="game-card">
-        <div class="game-icon">🔢</div>
-        <div class="game-name">20以内加减法</div>
-        <div class="game-desc">口算练习 · 4种难度</div>
-      </a>
+    <div class="info">
+      <div class="progress-info">题目 <span id="qIdx">1</span> / <span id="qTotal">10</span></div>
+      <div class="time-info" id="timeInfo">剩余: 15s</div>
+    </div>
 
-      <a href="pinyin-game/index.html" class="game-card">
-        <div class="game-icon">📝</div>
-        <div class="game-name">汉语拼音</div>
-        <div class="game-desc">声韵认读 · 4种模式</div>
-      </a>
+    <div class="progress-bar">
+      <div class="bar" id="bar"></div>
+    </div>
 
-      <div class="game-card disabled">
-        <div class="game-icon">🔤</div>
-        <div class="game-name">英语字母</div>
-        <div class="game-desc">敬请期待</div>
-      </div>
+    <div class="hint" id="hint">请选出正确的拼音</div>
+    <div class="pinyin-display" id="pinyinDisplay">ā</div>
 
-      <div class="game-card disabled">
-        <div class="game-icon">🎨</div>
-        <div class="game-name">色彩认知</div>
-        <div class="game-desc">敬请期待</div>
+    <div class="options" id="options">
+      <!-- 选项按钮由 JS 动态生成 -->
+    </div>
+
+    <div class="feedback" id="feedback"></div>
+
+    <div class="bottom-row" id="bottomRow">
+      <button id="restartBtn" class="btn green">再来一局</button>
+      <button id="reviewBtn" class="btn blue">查看错题</button>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="modalMask">
+    <div class="modal">
+      <div class="modal-title" id="modalTitle">错题回顾</div>
+      <div class="modal-list" id="modalList"></div>
+      <div style="text-align:center;">
+        <button id="modalCloseBtn" class="btn gray">关 闭</button>
       </div>
     </div>
   </div>
 
-<script src="assets/game.js"></script>
+<script src="../assets/game.js"></script>
 <script>
 "use strict";
-// 首页只是导航,无需额外初始化
+
+const Lib = window.GameLib;
+const $ = Lib.$;
+const randInt = Lib.randInt;
+const AudioSystem = Lib.AudioSystem;
+const FxSystem = Lib.FxSystem;
+const TimerSystem = Lib.TimerSystem;
+const ModalSystem = Lib.ModalSystem;
+window.GameLib.bindGlobalEvents();
+
+// ---- 拼音题库 ----
+const PINYIN_DATA = {
+  "声母": {
+    hint: "请选出对应的声母",
+    questions: [
+      { display: "b", options: ["b", "p", "m", "f"], answer: "b" },
+      { display: "p", options: ["b", "p", "m", "f"], answer: "p" },
+      { display: "m", options: ["b", "p", "m", "f"], answer: "m" },
+      { display: "f", options: ["b", "p", "m", "f"], answer: "f" },
+      { display: "d", options: ["d", "t", "n", "l"], answer: "d" },
+      { display: "t", options: ["d", "t", "n", "l"], answer: "t" },
+      { display: "n", options: ["d", "t", "n", "l"], answer: "n" },
+      { display: "l", options: ["d", "t", "n", "l"], answer: "l" },
+      { display: "g", options: ["g", "k", "h", "j"], answer: "g" },
+      { display: "k", options: ["g", "k", "h", "j"], answer: "k" },
+      { display: "h", options: ["g", "k", "h", "j"], answer: "h" },
+      { display: "j", options: ["j", "q", "x", "zh"], answer: "j" },
+      { display: "q", options: ["j", "q", "x", "zh"], answer: "q" },
+      { display: "x", options: ["j", "q", "x", "zh"], answer: "x" },
+      { display: "zh", options: ["zh", "ch", "sh", "r"], answer: "zh" },
+      { display: "ch", options: ["zh", "ch", "sh", "r"], answer: "ch" },
+      { display: "sh", options: ["zh", "ch", "sh", "r"], answer: "sh" },
+      { display: "r", options: ["zh", "ch", "sh", "r"], answer: "r" },
+      { display: "z", options: ["z", "c", "s", "y"], answer: "z" },
+      { display: "c", options: ["z", "c", "s", "y"], answer: "c" },
+      { display: "s", options: ["z", "c", "s", "y"], answer: "s" },
+      { display: "y", options: ["y", "w", "l", "n"], answer: "y" },
+      { display: "w", options: ["y", "w", "l", "n"], answer: "w" },
+    ],
+  },
+  "韵母": {
+    hint: "请选出对应的韵母",
+    questions: [
+      { display: "a", options: ["a", "o", "e", "i"], answer: "a" },
+      { display: "o", options: ["a", "o", "e", "i"], answer: "o" },
+      { display: "e", options: ["a", "o", "e", "i"], answer: "e" },
+      { display: "i", options: ["i", "u", "ü", "er"], answer: "i" },
+      { display: "u", options: ["i", "u", "ü", "er"], answer: "u" },
+      { display: "ü", options: ["i", "u", "ü", "er"], answer: "ü" },
+      { display: "er", options: ["er", "an", "en", "in"], answer: "er" },
+      { display: "an", options: ["an", "en", "in", "un"], answer: "an" },
+      { display: "en", options: ["an", "en", "in", "un"], answer: "en" },
+      { display: "in", options: ["an", "en", "in", "un"], answer: "in" },
+      { display: "un", options: ["an", "en", "un", "ün"], answer: "un" },
+      { display: "ün", options: ["an", "en", "un", "ün"], answer: "ün" },
+      { display: "ang", options: ["ang", "eng", "ing", "ong"], answer: "ang" },
+      { display: "eng", options: ["ang", "eng", "ing", "ong"], answer: "eng" },
+      { display: "ing", options: ["ang", "eng", "ing", "ong"], answer: "ing" },
+      { display: "ong", options: ["ang", "eng", "ing", "ong"], answer: "ong" },
+      { display: "ai", options: ["ai", "ei", "ui", "ao"], answer: "ai" },
+      { display: "ei", options: ["ai", "ei", "ui", "ao"], answer: "ei" },
+      { display: "ui", options: ["ai", "ei", "ui", "ao"], answer: "ui" },
+      { display: "ao", options: ["ao", "ou", "iu", "ie"], answer: "ao" },
+      { display: "ou", options: ["ao", "ou", "iu", "ie"], answer: "ou" },
+      { display: "iu", options: ["ao", "ou", "iu", "ie"], answer: "iu" },
+      { display: "ie", options: ["ie", "üe", "ai", "ei"], answer: "ie" },
+      { display: "üe", options: ["ie", "üe", "ai", "ei"], answer: "üe" },
+    ],
+  },
+  "整体认读": {
+    hint: "请选出对应的整体认读音节",
+    questions: [
+      { display: "zhi", options: ["zhi", "chi", "shi", "ri"], answer: "zhi" },
+      { display: "chi", options: ["zhi", "chi", "shi", "ri"], answer: "chi" },
+      { display: "shi", options: ["zhi", "chi", "shi", "ri"], answer: "shi" },
+      { display: "ri", options: ["zhi", "chi", "shi", "ri"], answer: "ri" },
+      { display: "zi", options: ["zi", "ci", "si", "yi"], answer: "zi" },
+      { display: "ci", options: ["zi", "ci", "si", "yi"], answer: "ci" },
+      { display: "si", options: ["zi", "ci", "si", "yi"], answer: "si" },
+      { display: "yi", options: ["yi", "wu", "yu", "ye"], answer: "yi" },
+      { display: "wu", options: ["yi", "wu", "yu", "ye"], answer: "wu" },
+      { display: "yu", options: ["yi", "wu", "yu", "ye"], answer: "yu" },
+      { display: "ye", options: ["ye", "yue", "yuan", "yin"], answer: "ye" },
+      { display: "yue", options: ["ye", "yue", "yuan", "yin"], answer: "yue" },
+      { display: "yuan", options: ["yuan", "yin", "yun", "ying"], answer: "yuan" },
+      { display: "yin", options: ["yuan", "yin", "yun", "ying"], answer: "yin" },
+      { display: "yun", options: ["yuan", "yin", "yun", "ying"], answer: "yun" },
+      { display: "ying", options: ["yuan", "yin", "yun", "ying"], answer: "ying" },
+    ],
+  },
+  "完整拼音": {
+    hint: "请选出对应汉字的拼音",
+    questions: [
+      { display: "妈", options: ["mā", "bā", "pā", "fā"], answer: "mā" },
+      { display: "爸", options: ["bà", "mà", "pà", "fà"], answer: "bà" },
+      { display: "米", options: ["mǐ", "bǐ", "pǐ", "fǐ"], answer: "mǐ" },
+      { display: "花", options: ["huā", "kuā", "guā", "xuā"], answer: "huā" },
+      { display: "哥", options: ["gē", "kē", "hē", "jē"], answer: "gē" },
+      { display: "鸡", options: ["jī", "qī", "xī", "zhī"], answer: "jī" },
+      { display: "兔", options: ["tù", "dù", "nù", "lù"], answer: "tù" },
+      { display: "牛", options: ["niú", "liú", "diú", "tiú"], answer: "niú" },
+      { display: "飞", options: ["fēi", "bēi", "pēi", "mēi"], answer: "fēi" },
+      { display: "鱼", options: ["yú", "wú", "yǔ", "yǘ"], answer: "yú" },
+      { display: "山", options: ["shān", "chān", "zhān", "rān"], answer: "shān" },
+      { display: "水", options: ["shuǐ", "chuǐ", "zhuǐ", "ruǐ"], answer: "shuǐ" },
+      { display: "日", options: ["rì", "zhì", "chì", "shì"], answer: "rì" },
+      { display: "月", options: ["yuè", "yè", "yǚ", "yù"], answer: "yuè" },
+      { display: "火", options: ["huǒ", "guǒ", "kuǒ", "duǒ"], answer: "huǒ" },
+      { display: "风", options: ["fēng", "bēng", "pēng", "mēng"], answer: "fēng" },
+    ],
+  },
+};
+
+// ---- 配置 ----
+const CONFIG = {
+  totalQuestions: 10,
+  secondsPerQuestion: 15,
+  scoreCorrect: 10,
+  scoreBonusMax: 5,
+};
+
+// ---- 状态 ----
+const state = {
+  mode: "韵母",
+  qIndex: 0,
+  score: 0,
+  currentAnswer: "",
+  currentQ: null,
+  gameOver: false,
+  wrongList: [],
+  awaitingNext: false,
+  shuffledQuestions: [],
+  currentQText: "",
+};
+
+// ---- DOM ----
+const modeSelect = $("modeSelect");
+const scoreEl = $("score");
+const qIdxEl = $("qIdx");
+const qTotalEl = $("qTotal");
+const timeInfo = $("timeInfo");
+const bar = $("bar");
+const pinyinDisplay = $("pinyinDisplay");
+const hint = $("hint");
+const optionsEl = $("options");
+const feedbackEl = $("feedback");
+const bottomRow = $("bottomRow");
+const restartBtn = $("restartBtn");
+const reviewBtn = $("reviewBtn");
+const modalMask = $("modalMask");
+const modalTitle = $("modalTitle");
+const modalList = $("modalList");
+const modalCloseBtn = $("modalCloseBtn");
+
+qTotalEl.textContent = CONFIG.totalQuestions;
+
+// ---- 初始化 ----
+// 拼音游戏没有 question label,用 pinyinDisplay;没有 answer input
+FxSystem.init(pinyinDisplay, null);
+ModalSystem.init(modalMask, modalTitle, modalList, modalCloseBtn);
+
+// ---- 工具 ----
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(0, i);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ---- 游戏流程 ----
+function newRound() {
+  state.qIndex = 0;
+  state.score = 0;
+  state.wrongList = [];
+  state.gameOver = false;
+  state.awaitingNext = false;
+  FxSystem.setGameOver(false);
+  FxSystem.resetIdx();
+  bottomRow.classList.remove("show");
+  optionsEl.style.display = "";
+  bottomRow.classList.remove("show");
+  state.shuffledQuestions = shuffle(PINYIN_DATA[state.mode].questions);
+  hint.textContent = PINYIN_DATA[state.mode].hint;
+  updateScore();
+  nextQuestion();
+}
+
+function nextQuestion() {
+  if (state.qIndex >= CONFIG.totalQuestions) {
+    finish();
+    return;
+  }
+  state.qIndex++;
+  qIdxEl.textContent = state.qIndex;
+  feedbackEl.textContent = "";
+  feedbackEl.className = "feedback";
+
+  const q = state.shuffledQuestions[state.qIndex - 1 % state.shuffledQuestions.length];
+  state.currentQ = q;
+  state.currentAnswer = q.answer;
+  state.currentQText = q.display;
+  pinyinDisplay.textContent = q.display;
+
+  // 构建选项
+  optionsEl.innerHTML = "";
+  const shuffledOptions = shuffle(q.options.slice());
+  shuffledOptions.forEach((opt) => {
+    const btn = document.createElement("button");
+    btn.className = "option-btn";
+    btn.textContent = opt;
+    btn.addEventListener("click", () => handleAnswer(opt, btn));
+    optionsEl.appendChild(btn);
+  });
+
+  timeInfo.classList.remove("warn", "blink");
+  bar.style.width = "100%";
+  bar.classList.remove("warn");
+
+  TimerSystem.start(
+    CONFIG.secondsPerQuestion,
+    (left) => {
+      const ratio = left / CONFIG.secondsPerQuestion;
+      bar.style.width = (ratio * 100) + "%";
+      timeInfo.textContent = `剩余: ${Math.ceil(left)}s`;
+      if (left <= 5) {
+        bar.classList.add("warn");
+        timeInfo.classList.add("warn");
+        timeInfo.classList.toggle("blink");
+      } else {
+        bar.classList.remove("warn");
+        timeInfo.classList.remove("warn", "blink");
+      }
+    },
+    () => timeout()
+  );
+}
+
+function updateScore() { scoreEl.textContent = state.score; }
+
+function handleAnswer(selected, btn) {
+  if (state.gameOver || state.awaitingNext) return;
+  TimerSystem.pause();
+  state.awaitingNext = true;
+
+  const isCorrect = selected === state.currentAnswer;
+
+  // 禁用所有选项
+  const allBtns = optionsEl.querySelectorAll(".option-btn");
+  allBtns.forEach((b) => {
+    b.disabled = true;
+    if (b.textContent === state.currentAnswer) b.classList.add("correct");
+    if (b === btn && !isCorrect) b.classList.add("wrong");
+  });
+
+  if (isCorrect) {
+    let bonus = 0;
+    if (TimerSystem.remaining > 0) {
+      bonus = Math.round(CONFIG.scoreBonusMax * (TimerSystem.remaining / CONFIG.secondsPerQuestion));
+      bonus = Math.max(0, Math.min(CONFIG.scoreBonusMax, bonus));
+    }
+    const got = CONFIG.scoreCorrect + bonus;
+    state.score += got;
+    feedbackEl.textContent = `✅  正确!  +${got} 分`;
+    feedbackEl.className = "feedback green";
+    AudioSystem.correct();
+    FxSystem.triggerCorrect();
+  } else {
+    feedbackEl.textContent = `❌  错误!  正确答案:${state.currentAnswer}`;
+    feedbackEl.className = "feedback red";
+    state.wrongList.push({
+      q: `选出 "${state.currentQText}" 的拼音`,
+      user: selected,
+      correct: state.currentAnswer,
+    });
+    AudioSystem.wrong();
+    FxSystem.triggerWrong();
+  }
+
+  updateScore();
+  const resumeDelay = isCorrect ? 1500 : 1800;
+  setTimeout(() => {
+    state.awaitingNext = false;
+    nextQuestion();
+  }, resumeDelay);
+}
+
+function timeout() {
+  if (state.gameOver || state.awaitingNext) return;
+  state.awaitingNext = true;
+  const allBtns = optionsEl.querySelectorAll(".option-btn");
+  allBtns.forEach((b) => {
+    b.disabled = true;
+    if (b.textContent === state.currentAnswer) b.classList.add("correct");
+  });
+  feedbackEl.textContent = `⏰  超时!  正确答案:${state.currentAnswer}`;
+  feedbackEl.className = "feedback red";
+  state.wrongList.push({
+    q: `选出 "${state.currentQText}" 的拼音`,
+    user: null,
+    correct: state.currentAnswer,
+  });
+  AudioSystem.wrong();
+  FxSystem.triggerWrong();
+  setTimeout(() => {
+    state.awaitingNext = false;
+    nextQuestion();
+  }, 1800);
+}
+
+function finish() {
+  state.gameOver = true;
+  FxSystem.setGameOver(true);
+  TimerSystem.stop();
+  FxSystem.clearAll();
+  const full = CONFIG.totalQuestions * CONFIG.scoreCorrect;
+  const percent = full ? Math.floor(state.score / full * 100) : 0;
+  let comment;
+  if (percent >= 90) comment = "太棒了!";
+  else if (percent >= 60) comment = "不错,继续努力!";
+  else comment = "加油,多练习会更好!";
+  pinyinDisplay.textContent = "练习结束";
+  feedbackEl.textContent = `总分 ${state.score} / ${full}    ${comment}`;
+  feedbackEl.className = "feedback";
+  timeInfo.textContent = "剩余: 0s";
+  timeInfo.className = "time-info";
+  bar.style.width = "0%";
+  optionsEl.style.display = "none";
+  bottomRow.classList.add("show");
+  reviewBtn.style.display = state.wrongList.length > 0 ? "" : "none";
+}
+
+// ---- 事件绑定 ----
+modeSelect.addEventListener("change", () => {
+  state.mode = modeSelect.value;
+  newRound();
+});
+restartBtn.addEventListener("click", () => { AudioSystem.ensure(); newRound(); });
+reviewBtn.addEventListener("click", () => ModalSystem.showWrong(state.wrongList));
+
+// ---- 启动 ----
+newRound();
 </script>
 </body>
 </html>
