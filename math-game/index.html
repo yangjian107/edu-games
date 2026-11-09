@@ -14,6 +14,35 @@
   .q-display {
     font-family: "Comic Sans MS", "Segoe UI", "Microsoft YaHei UI", sans-serif;
   }
+  /* 题数自定义 */
+  .count-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    color: #78909C;
+  }
+  .count-input {
+    width: 56px;
+    padding: 6px 4px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: center;
+    color: #37474F;
+    background: #FFFFFF;
+    border: 1px solid #E8E0CC;
+    border-radius: 8px;
+    outline: none;
+  }
+  .count-input:focus { border-color: #FF8C42; }
+  .count-note {
+    font-size: 12px;
+    color: #FF8C42;
+    text-align: center;
+    min-height: 1.2em;
+    margin: -14px 0 12px;
+  }
 </style>
 </head>
 <body>
@@ -23,22 +52,29 @@
     </div>
     <div class="top">
       <select id="modeSelect" class="mode-select">
-        <option value="10以内加减法">10以内加减法</option>
-        <option value="20以内加减法" selected>20以内加减法</option>
+        <option value="10以内加减法" selected>10以内加减法</option>
+        <option value="20以内加减法">20以内加减法</option>
         <option value="20以内进位加法">20以内进位加法</option>
         <option value="20以内退位减法">20以内退位减法</option>
       </select>
+      <div class="count-box">
+        题数
+        <input id="countInput" class="count-input" type="text" inputmode="numeric"
+               autocomplete="off" pattern="[0-9]*" maxlength="3" value="110">
+      </div>
       <div class="score-label">得分: <span id="score">0</span></div>
     </div>
 
     <div class="info">
-      <div class="progress-info">题目 <span id="qIdx">1</span> / <span id="qTotal">10</span></div>
-      <div class="time-info" id="timeInfo">剩余: 15s</div>
+      <div class="progress-info">题目 <span id="qIdx">1</span> / <span id="qTotal">110</span></div>
+      <div class="time-info" id="timeInfo">用时: 00:00</div>
     </div>
 
     <div class="progress-bar">
-      <div class="bar" id="bar"></div>
+      <div class="bar" id="bar" style="width:0%"></div>
     </div>
+
+    <div class="count-note" id="countNote"></div>
 
     <div class="question q-display" id="question">17 + 3 = ?</div>
 
@@ -82,10 +118,10 @@ window.GameLib.bindGlobalEvents();
 
 // ---- 数学游戏配置 ----
 const CONFIG = {
-  totalQuestions: 10,
-  secondsPerQuestion: 15,
+  defaultCount: 110,      // 默认题目数
+  minCount: 1,
+  maxCount: 999,
   scoreCorrect: 10,
-  scoreBonusMax: 5,
 };
 
 const MODES = {
@@ -97,7 +133,9 @@ const MODES = {
 
 // ---- 状态 ----
 const state = {
-  mode: "20以内加减法",
+  mode: "10以内加减法",
+  total: 0,               // 本局实际题目数
+  questions: [],          // 本局题目(乱序、不重复)
   qIndex: 0,
   score: 0,
   currentAnswer: 0,
@@ -105,6 +143,9 @@ const state = {
   gameOver: false,
   wrongList: [],
   awaitingNext: false,
+  startAt: 0,             // 本局开始时间戳(ms)
+  elapsedMs: 0,           // 本局已用时长(ms)
+  clockJob: null,         // 总时长刷新任务
 };
 
 // ---- DOM ----
@@ -125,47 +166,84 @@ const modalMask = $("modalMask");
 const modalTitle = $("modalTitle");
 const modalList = $("modalList");
 const modalCloseBtn = $("modalCloseBtn");
+const countInput = $("countInput");
+const countNote = $("countNote");
 
-qTotalEl.textContent = CONFIG.totalQuestions;
+// ---- 生成某模式的全部不重复题目池 ----
+function buildPool(modeName) {
+  const cfg = MODES[modeName];
+  const maxN = cfg.max;
+  const t = cfg.type;
+  const seen = new Set();
+  const pool = [];
+  function push(text, ans) {
+    if (seen.has(text)) return;
+    seen.add(text);
+    pool.push({ text: text, answer: ans });
+  }
+  if (t === "any") {
+    for (let a = 0; a <= maxN; a++) {
+      for (let b = 0; a + b <= maxN; b++) {
+        push(`${a} + ${b} = ?`, a + b);
+      }
+    }
+    for (let a = 0; a <= maxN; a++) {
+      for (let b = 0; b <= a; b++) {
+        push(`${a} - ${b} = ?`, a - b);
+      }
+    }
+  } else if (t === "carry_add") {
+    // 进位加法:两个一位数相加,和满十(即需进位)
+    for (let a = 1; a <= 9; a++) {
+      for (let b = 10 - a; b <= 9; b++) {
+        push(`${a} + ${b} = ?`, a + b);
+      }
+    }
+  } else {
+    // 退位减法:十几减一位数,个位不够减(即需退位)
+    for (let u = 0; u <= 9; u++) {
+      const a = 10 + u;
+      for (let b = u + 1; b <= 9; b++) {
+        push(`${a} - ${b} = ?`, a - b);
+      }
+    }
+  }
+  return pool;
+}
+
+// ---- 洗牌(Fisher-Yates) ----
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = randInt(0, i);
+    const tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+  }
+  return a;
+}
 
 // ---- 初始化特效与弹窗 ----
 FxSystem.init(questionEl, answerEl);
 ModalSystem.init(modalMask, modalTitle, modalList, modalCloseBtn);
 
-// ---- 题目生成 ----
-function genQuestion() {
-  const cfg = MODES[state.mode];
-  const maxN = cfg.max;
-  const t = cfg.type;
-  let a, b, ans, op;
-  if (t === "any") {
-    op = Math.random() < 0.5 ? "+" : "-";
-    if (op === "+") {
-      a = randInt(0, maxN);
-      b = randInt(0, maxN - a);
-      ans = a + b;
-    } else {
-      a = randInt(0, maxN);
-      b = randInt(0, a);
-      ans = a - b;
-    }
-  } else if (t === "carry_add") {
-    a = randInt(1, 9);
-    b = randInt(10 - a, 9);
-    ans = a + b;
-    op = "+";
-  } else {
-    const x = randInt(1, 8);
-    a = 10 + x;
-    b = randInt(x + 1, 9);
-    ans = a - b;
-    op = "-";
-  }
-  return { text: `${a} ${op} ${b} = ?`, answer: ans };
-}
-
 // ---- 游戏流程 ----
 function newRound() {
+  // 读取自定义题数
+  let n = parseInt(countInput.value, 10);
+  if (isNaN(n) || n < CONFIG.minCount) n = CONFIG.defaultCount;
+  if (n > CONFIG.maxCount) n = CONFIG.maxCount;
+
+  // 生成不重复题库,随机顺序,取前 n 道
+  const pool = buildPool(state.mode);
+  if (n > pool.length) {
+    countNote.textContent = `该模式共有 ${pool.length} 道不重复题目,已自动调整为 ${pool.length} 题`;
+    n = pool.length;
+  } else {
+    countNote.textContent = "";
+  }
+  countInput.value = n;
+
+  state.total = n;
+  state.questions = shuffle(pool).slice(0, n);
   state.qIndex = 0;
   state.score = 0;
   state.wrongList = [];
@@ -177,21 +255,23 @@ function newRound() {
   submitBtn.style.display = "";
   submitBtn.disabled = false;
   answerEl.disabled = false;
+  qTotalEl.textContent = state.total;
   updateScore();
+  startClock();
   nextQuestion();
 }
 
 function nextQuestion() {
-  if (state.qIndex >= CONFIG.totalQuestions) {
+  if (state.qIndex >= state.total) {
     finish();
     return;
   }
+  const q = state.questions[state.qIndex];
   state.qIndex++;
   qIdxEl.textContent = state.qIndex;
   feedbackEl.textContent = "";
   feedbackEl.className = "feedback";
 
-  const q = genQuestion();
   state.currentQText = q.text;
   state.currentAnswer = q.answer;
   questionEl.textContent = q.text;
@@ -202,30 +282,42 @@ function nextQuestion() {
   answerEl.className = "answer-input num-input";
   setTimeout(() => { if (!state.gameOver) answerEl.focus(); }, 50);
 
-  timeInfo.classList.remove("warn", "blink");
-  bar.style.width = "100%";
-  bar.classList.remove("warn");
-
-  TimerSystem.start(
-    CONFIG.secondsPerQuestion,
-    (left) => {
-      const ratio = left / CONFIG.secondsPerQuestion;
-      bar.style.width = (ratio * 100) + "%";
-      timeInfo.textContent = `剩余: ${Math.ceil(left)}s`;
-      if (left <= 5) {
-        bar.classList.add("warn");
-        timeInfo.classList.add("warn");
-        timeInfo.classList.toggle("blink");
-      } else {
-        bar.classList.remove("warn");
-        timeInfo.classList.remove("warn", "blink");
-      }
-    },
-    () => timeout()
-  );
+  // 进度条按已作答题目占比显示
+  const ratio = state.total ? (state.qIndex / state.total) : 0;
+  bar.style.width = (ratio * 100) + "%";
 }
 
 function updateScore() { scoreEl.textContent = state.score; }
+
+// ---- 总用时计时 ----
+function fmtTime(ms) {
+  const total = Math.floor(ms / 1000);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+}
+
+function startClock() {
+  stopClock();
+  state.startAt = Date.now();
+  state.elapsedMs = 0;
+  timeInfo.className = "time-info";
+  timeInfo.textContent = "用时: 00:00";
+  const tick = () => {
+    if (state.gameOver) return;
+    state.elapsedMs = Date.now() - state.startAt;
+    timeInfo.textContent = "用时: " + fmtTime(state.elapsedMs);
+    state.clockJob = setTimeout(tick, 500);
+  };
+  state.clockJob = setTimeout(tick, 500);
+}
+
+function stopClock() {
+  if (state.clockJob) {
+    clearTimeout(state.clockJob);
+    state.clockJob = null;
+  }
+}
 
 function submit() {
   if (state.gameOver || state.awaitingNext) return;
@@ -243,18 +335,11 @@ function submit() {
   }
   const userAns = parseInt(raw, 10);
 
-  TimerSystem.pause();
   state.awaitingNext = true;
 
   if (userAns === state.currentAnswer) {
-    let bonus = 0;
-    if (TimerSystem.remaining > 0) {
-      bonus = Math.round(CONFIG.scoreBonusMax * (TimerSystem.remaining / CONFIG.secondsPerQuestion));
-      bonus = Math.max(0, Math.min(CONFIG.scoreBonusMax, bonus));
-    }
-    const got = CONFIG.scoreCorrect + bonus;
-    state.score += got;
-    feedbackEl.textContent = `✅  正确!  +${got} 分`;
+    state.score += CONFIG.scoreCorrect;
+    feedbackEl.textContent = `✅  正确!  +${CONFIG.scoreCorrect} 分`;
     feedbackEl.className = "feedback green";
     AudioSystem.correct();
     FxSystem.triggerCorrect();
@@ -272,50 +357,37 @@ function submit() {
 
   updateScore();
   answerEl.disabled = true;
-  const resumeDelay = userAns === state.currentAnswer ? 1500 : 1800;
+  const resumeDelay = userAns === state.currentAnswer ? 1000 : 1800;
   setTimeout(() => {
     state.awaitingNext = false;
     nextQuestion();
   }, resumeDelay);
 }
 
-function timeout() {
-  if (state.gameOver || state.awaitingNext) return;
-  state.awaitingNext = true;
-  feedbackEl.textContent = `⏰  超时!  正确答案:${state.currentAnswer}`;
-  feedbackEl.className = "feedback red";
-  state.wrongList.push({
-    q: state.currentQText,
-    user: null,
-    correct: state.currentAnswer,
-  });
-  AudioSystem.wrong();
-  FxSystem.triggerWrong();
-  answerEl.disabled = true;
-  setTimeout(() => {
-    state.awaitingNext = false;
-    nextQuestion();
-  }, 1800);
-}
-
 function finish() {
   state.gameOver = true;
   FxSystem.setGameOver(true);
-  TimerSystem.stop();
+  stopClock();
+  // 定格最终用时
+  state.elapsedMs = Date.now() - state.startAt;
+  const durationStr = fmtTime(state.elapsedMs);
   FxSystem.clearAll();
-  const full = CONFIG.totalQuestions * CONFIG.scoreCorrect;
+  const full = state.total * CONFIG.scoreCorrect;
   const percent = full ? Math.floor(state.score / full * 100) : 0;
+  const rightCount = state.total - state.wrongList.length;
   let comment;
   if (percent >= 90) comment = "太棒了!";
   else if (percent >= 60) comment = "不错,继续努力!";
   else comment = "加油,多练习会更好!";
   questionEl.textContent = "练习结束";
   questionEl.classList.add("end-text");
-  feedbackEl.textContent = `总分 ${state.score} / ${full}    ${comment}`;
+  feedbackEl.innerHTML =
+    `总分 ${state.score} / ${full}    ${comment}<br>` +
+    `答对 ${rightCount} / ${state.total}    总用时 ${durationStr}`;
   feedbackEl.className = "feedback";
-  timeInfo.textContent = "剩余: 0s";
+  timeInfo.textContent = "用时: " + durationStr;
   timeInfo.className = "time-info";
-  bar.style.width = "0%";
+  bar.style.width = "100%";
   answerEl.disabled = true;
   submitBtn.style.display = "none";
   bottomRow.classList.add("show");
@@ -340,6 +412,21 @@ modeSelect.addEventListener("change", () => {
   state.mode = modeSelect.value;
   newRound();
 });
+// 题数输入:只允许数字;回车或失焦时以新题数开始新一局
+countInput.addEventListener("input", (e) => {
+  const v = e.target.value;
+  const cleaned = v.replace(/[^\d]/g, "");
+  if (v !== cleaned) e.target.value = cleaned;
+});
+countInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    // 失焦触发 change 事件,由 change 统一重开一局
+    countInput.blur();
+    answerEl.focus();
+  }
+});
+countInput.addEventListener("change", () => { newRound(); });
 restartBtn.addEventListener("click", () => { AudioSystem.ensure(); newRound(); });
 reviewBtn.addEventListener("click", () => ModalSystem.showWrong(state.wrongList));
 
