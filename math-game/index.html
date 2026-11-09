@@ -62,7 +62,6 @@
         <input id="countInput" class="count-input" type="text" inputmode="numeric"
                autocomplete="off" pattern="[0-9]*" maxlength="3" value="110">
       </div>
-      <div class="score-label">得分: <span id="score">0</span></div>
     </div>
 
     <div class="info">
@@ -121,7 +120,6 @@ const CONFIG = {
   defaultCount: 110,      // 默认题目数
   minCount: 1,
   maxCount: 999,
-  scoreCorrect: 10,
 };
 
 const MODES = {
@@ -137,11 +135,12 @@ const state = {
   total: 0,               // 本局实际题目数
   questions: [],          // 本局题目(乱序、不重复)
   qIndex: 0,
-  score: 0,
+  retries: 0,             // 当前题目答错次数
+  wrongTimes: 0,          // 本局累计答错次数
   currentAnswer: 0,
   currentQText: "",
   gameOver: false,
-  wrongList: [],
+  wrongList: [],          // 需要重做的题(首次答错)
   awaitingNext: false,
   startAt: 0,             // 本局开始时间戳(ms)
   elapsedMs: 0,           // 本局已用时长(ms)
@@ -150,7 +149,6 @@ const state = {
 
 // ---- DOM ----
 const modeSelect = $("modeSelect");
-const scoreEl = $("score");
 const qIdxEl = $("qIdx");
 const qTotalEl = $("qTotal");
 const timeInfo = $("timeInfo");
@@ -245,7 +243,8 @@ function newRound() {
   state.total = n;
   state.questions = shuffle(pool).slice(0, n);
   state.qIndex = 0;
-  state.score = 0;
+  state.retries = 0;
+  state.wrongTimes = 0;
   state.wrongList = [];
   state.gameOver = false;
   state.awaitingNext = false;
@@ -256,7 +255,6 @@ function newRound() {
   submitBtn.disabled = false;
   answerEl.disabled = false;
   qTotalEl.textContent = state.total;
-  updateScore();
   startClock();
   nextQuestion();
 }
@@ -286,8 +284,6 @@ function nextQuestion() {
   const ratio = state.total ? (state.qIndex / state.total) : 0;
   bar.style.width = (ratio * 100) + "%";
 }
-
-function updateScore() { scoreEl.textContent = state.score; }
 
 // ---- 总用时计时 ----
 function fmtTime(ms) {
@@ -335,31 +331,38 @@ function submit() {
   }
   const userAns = parseInt(raw, 10);
 
-  state.awaitingNext = true;
-
-  if (userAns === state.currentAnswer) {
-    state.score += CONFIG.scoreCorrect;
-    feedbackEl.textContent = `✅  正确!  +${CONFIG.scoreCorrect} 分`;
-    feedbackEl.className = "feedback green";
-    AudioSystem.correct();
-    FxSystem.triggerCorrect();
-  } else {
-    feedbackEl.textContent = `❌  错误!  正确答案:${state.currentAnswer}`;
+  if (userAns !== state.currentAnswer) {
+    // 答错:只提醒,不提交,清空让用户重答
+    state.wrongTimes++;
+    if (state.retries === 0) {
+      // 首次答错记录到错题本
+      state.wrongList.push({
+        q: state.currentQText,
+        user: userAns,
+        correct: state.currentAnswer,
+      });
+    }
+    state.retries++;
+    feedbackEl.textContent = "❌  答案不对,再想想~";
     feedbackEl.className = "feedback red";
-    state.wrongList.push({
-      q: state.currentQText,
-      user: userAns,
-      correct: state.currentAnswer,
-    });
     AudioSystem.wrong();
     FxSystem.triggerWrong();
+    answerEl.value = "";
+    answerEl.focus();
+    return;
   }
 
-  updateScore();
+  // 答对:提交,进入下一题
+  state.awaitingNext = true;
+  feedbackEl.textContent = "✅  正确!";
+  feedbackEl.className = "feedback green";
+  AudioSystem.correct();
+  FxSystem.triggerCorrect();
   answerEl.disabled = true;
-  const resumeDelay = userAns === state.currentAnswer ? 1000 : 1800;
+  const resumeDelay = 1000;
   setTimeout(() => {
     state.awaitingNext = false;
+    state.retries = 0;
     nextQuestion();
   }, resumeDelay);
 }
@@ -372,9 +375,8 @@ function finish() {
   state.elapsedMs = Date.now() - state.startAt;
   const durationStr = fmtTime(state.elapsedMs);
   FxSystem.clearAll();
-  const full = state.total * CONFIG.scoreCorrect;
-  const percent = full ? Math.floor(state.score / full * 100) : 0;
-  const rightCount = state.total - state.wrongList.length;
+  const firstRight = state.total - state.wrongList.length;
+  const percent = state.total ? Math.floor(firstRight / state.total * 100) : 0;
   let comment;
   if (percent >= 90) comment = "太棒了!";
   else if (percent >= 60) comment = "不错,继续努力!";
@@ -382,8 +384,8 @@ function finish() {
   questionEl.textContent = "练习结束";
   questionEl.classList.add("end-text");
   feedbackEl.innerHTML =
-    `总分 ${state.score} / ${full}    ${comment}<br>` +
-    `答对 ${rightCount} / ${state.total}    总用时 ${durationStr}`;
+    `一次答对 ${firstRight} / ${state.total}(${percent}%)    ${comment}<br>` +
+    `答错次数 ${state.wrongTimes}    总用时 ${durationStr}`;
   feedbackEl.className = "feedback";
   timeInfo.textContent = "用时: " + durationStr;
   timeInfo.className = "time-info";
