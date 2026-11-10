@@ -43,6 +43,45 @@
     min-height: 1.2em;
     margin: -14px 0 12px;
   }
+  /* 答题版 / 家长陪伴版 分段切换 */
+  .top-controls { flex-wrap: wrap; gap: 8px; }
+  .seg {
+    display: inline-flex;
+    background: #F0E8D2;
+    border-radius: 18px;
+    padding: 3px;
+  }
+  .seg-btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: bold;
+    color: #78909C;
+    background: transparent;
+    border: none;
+    border-radius: 15px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+  }
+  .seg-btn.active {
+    background: #FFFFFF;
+    color: #37474F;
+    box-shadow: 0 1px 4px rgba(180, 160, 120, 0.25);
+  }
+  /* 家长陪伴版:隐藏输入框,放大算式并垂直居中 */
+  .app.parent-mode .question {
+    font-size: clamp(44px, 14vw, 68px);
+    margin: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .app.parent-mode .submit-row { margin-bottom: 28px; }
+  .app.parent-mode .question.end-text {
+    font-size: clamp(28px, 9vw, 40px);
+  }
 </style>
 </head>
 <body>
@@ -50,7 +89,7 @@
     <div class="top">
       <a href="../index.html" class="back-btn">← 返回大厅</a>
     </div>
-    <div class="top">
+    <div class="top top-controls">
       <select id="modeSelect" class="mode-select">
         <option value="10以内加减法" selected>10以内加减法</option>
         <option value="20以内加减法">20以内加减法</option>
@@ -61,6 +100,10 @@
         题数
         <input id="countInput" class="count-input" type="text" inputmode="numeric"
                autocomplete="off" pattern="[0-9]*" maxlength="3" value="110">
+      </div>
+      <div class="seg" id="playSeg">
+        <button id="segAnswer" class="seg-btn active" type="button">答题版</button>
+        <button id="segParent" class="seg-btn" type="button">家长陪伴版</button>
       </div>
     </div>
 
@@ -132,6 +175,7 @@ const MODES = {
 // ---- 状态 ----
 const state = {
   mode: "10以内加减法",
+  playMode: "answer",     // "answer"=答题版 | "parent"=家长陪伴版
   total: 0,               // 本局实际题目数
   questions: [],          // 本局题目(乱序、不重复)
   qIndex: 0,
@@ -166,6 +210,19 @@ const modalList = $("modalList");
 const modalCloseBtn = $("modalCloseBtn");
 const countInput = $("countInput");
 const countNote = $("countNote");
+const segAnswer = $("segAnswer");
+const segParent = $("segParent");
+const appEl = document.querySelector(".app");
+
+// 切换 答题版 / 家长陪伴版 的界面表现
+function applyPlayMode() {
+  const parent = state.playMode === "parent";
+  appEl.classList.toggle("parent-mode", parent);
+  segAnswer.classList.toggle("active", !parent);
+  segParent.classList.toggle("active", parent);
+  submitBtn.textContent = parent ? "下一题 →" : "提 交";
+  answerEl.style.display = parent ? "none" : "";
+}
 
 // ---- 生成某模式的全部不重复题目池 ----
 function buildPool(modeName) {
@@ -250,6 +307,7 @@ function newRound() {
   state.awaitingNext = false;
   FxSystem.setGameOver(false);
   FxSystem.resetIdx();
+  applyPlayMode();
   bottomRow.classList.remove("show");
   submitBtn.style.display = "";
   submitBtn.disabled = false;
@@ -272,13 +330,18 @@ function nextQuestion() {
 
   state.currentQText = q.text;
   state.currentAnswer = q.answer;
-  questionEl.textContent = q.text;
+  // 家长陪伴版只出示算式本身,去掉末尾的 "= ?"
+  questionEl.textContent = state.playMode === "parent"
+    ? q.text.replace(/\s*=\s*\?\s*$/, "")
+    : q.text;
   questionEl.classList.remove("end-text");
 
   answerEl.value = "";
   answerEl.disabled = false;
   answerEl.className = "answer-input num-input";
-  setTimeout(() => { if (!state.gameOver) answerEl.focus(); }, 50);
+  if (state.playMode !== "parent") {
+    setTimeout(() => { if (!state.gameOver) answerEl.focus(); }, 50);
+  }
 
   // 进度条按已作答题目占比显示
   const ratio = state.total ? (state.qIndex / state.total) : 0;
@@ -317,6 +380,13 @@ function stopClock() {
 
 function submit() {
   if (state.gameOver || state.awaitingNext) return;
+
+  // 家长陪伴版:系统不判定,直接下一题
+  if (state.playMode === "parent") {
+    nextQuestion();
+    return;
+  }
+
   const raw = answerEl.value.trim();
   if (raw === "") {
     feedbackEl.textContent = "请输入答案";
@@ -375,17 +445,22 @@ function finish() {
   state.elapsedMs = Date.now() - state.startAt;
   const durationStr = fmtTime(state.elapsedMs);
   FxSystem.clearAll();
-  const firstRight = state.total - state.wrongList.length;
-  const percent = state.total ? Math.floor(firstRight / state.total * 100) : 0;
-  let comment;
-  if (percent >= 90) comment = "太棒了!";
-  else if (percent >= 60) comment = "不错,继续努力!";
-  else comment = "加油,多练习会更好!";
   questionEl.textContent = "练习结束";
   questionEl.classList.add("end-text");
-  feedbackEl.innerHTML =
-    `一次答对 ${firstRight} / ${state.total}(${percent}%)    ${comment}<br>` +
-    `答错次数 ${state.wrongTimes}    总用时 ${durationStr}`;
+  if (state.playMode === "parent") {
+    // 家长陪伴版:无判定统计,只列题数和总用时
+    feedbackEl.innerHTML = `共 ${state.total} 道题 · 总用时 ${durationStr}`;
+  } else {
+    const firstRight = state.total - state.wrongList.length;
+    const percent = state.total ? Math.floor(firstRight / state.total * 100) : 0;
+    let comment;
+    if (percent >= 90) comment = "太棒了!";
+    else if (percent >= 60) comment = "不错,继续努力!";
+    else comment = "加油,多练习会更好!";
+    feedbackEl.innerHTML =
+      `一次答对 ${firstRight} / ${state.total}(${percent}%)    ${comment}<br>` +
+      `答错次数 ${state.wrongTimes}    总用时 ${durationStr}`;
+  }
   feedbackEl.className = "feedback";
   timeInfo.textContent = "用时: " + durationStr;
   timeInfo.className = "time-info";
@@ -393,7 +468,28 @@ function finish() {
   answerEl.disabled = true;
   submitBtn.style.display = "none";
   bottomRow.classList.add("show");
-  reviewBtn.style.display = state.wrongList.length > 0 ? "" : "none";
+  if (state.playMode === "parent") {
+    reviewBtn.textContent = "查看题目列表";
+    reviewBtn.style.display = "";
+  } else {
+    reviewBtn.textContent = "查看错题";
+    reviewBtn.style.display = state.wrongList.length > 0 ? "" : "none";
+  }
+}
+
+// 家长陪伴版:按出题顺序列出本局全部算式及答案
+function showAllQuestions() {
+  modalTitle.textContent = "题目列表  (共 " + state.questions.length + " 题)";
+  modalList.innerHTML = "";
+  state.questions.forEach((q, i) => {
+    const div = document.createElement("div");
+    div.className = "modal-item";
+    div.innerHTML =
+      '<div class="modal-item-q">' + (i + 1) + '.  ' + q.text.replace(/\s*=\s*\?\s*$/, "") + '</div>' +
+      '<div class="modal-item-a" style="color:#4CAF50;">答案: ' + q.answer + '</div>';
+    modalList.appendChild(div);
+  });
+  modalMask.classList.add("show");
 }
 
 // ---- 事件绑定 ----
@@ -430,7 +526,31 @@ countInput.addEventListener("keydown", (e) => {
 });
 countInput.addEventListener("change", () => { newRound(); });
 restartBtn.addEventListener("click", () => { AudioSystem.ensure(); newRound(); });
-reviewBtn.addEventListener("click", () => ModalSystem.showWrong(state.wrongList));
+reviewBtn.addEventListener("click", () => {
+  if (state.playMode === "parent") showAllQuestions();
+  else ModalSystem.showWrong(state.wrongList);
+});
+// 分段控件:切换答题版/家长陪伴版,立即重开一局
+segAnswer.addEventListener("click", () => {
+  if (state.playMode === "answer") return;
+  state.playMode = "answer";
+  newRound();
+});
+segParent.addEventListener("click", () => {
+  if (state.playMode === "parent") return;
+  state.playMode = "parent";
+  newRound();
+});
+// 家长陪伴版没有输入框,回车键直接下一题(电脑端快速过题)
+// 注意:焦点在按钮上时回车会触发按钮原生 click,此处跳过避免重复前进;
+// 焦点在题数输入框时回车用于重开一局,同样跳过。
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || state.playMode !== "parent") return;
+  const el = document.activeElement;
+  if (el === countInput || (el && el.tagName === "BUTTON")) return;
+  e.preventDefault();
+  submit();
+});
 
 // ---- 启动 ----
 newRound();
